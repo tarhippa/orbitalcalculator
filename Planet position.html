@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+
+table, th, td {
+    border: 1px solid black;
+	 border-collapse: collapse;
+	text-align: center;
+}
+#table 
+{ 
+	margin-top: 10px;
+}
+</style>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<script src="./planet_info.js"></script>
+
+</head>
+<body>
+
+Gregorian Date
+<table>
+<tr>
+	<th>Day</th>
+	<th>Month</th>
+	<th>Year</th>
+</tr>
+<tr>
+	<td><input type="text" id="day" size="2"></td>
+	<td><input type="text" id="month" size="2"></td>
+	<td><input type="text" id="year"size="4"></td>
+</tr>
+</table>
+<button onclick="Calculate()">Calculate</button></br>
+Julian day:</br>
+<input type="text" id="result"></p>Distance units in AU</br>
+<table id="table" style="width:40%"></table>
+<script>
+//Constants
+const musolar = 1.3271244e20;  // gravitational parametre
+const au = 149597870700;		// Astronomical units in metres
+const day = 24*3600;			// seconds in a day
+const delta = 1e-5;			// itteration precision
+const precision = 2; 			// how many decimal places displayed at table
+
+
+//functions to convert degree -> radian
+function rad(deg){
+	return deg*Math.PI/180;	
+}
+//function radian -> degree
+function deg(rad){
+	return rad*180/Math.PI;
+}
+// Calculate Julian date from Gregorian date
+function CalculateJD(){
+    //retreive date from forms
+	var D = parseInt($("#day").val());
+	var Y = parseInt($("#year").val());
+	var M = parseInt($("#month").val());
+
+	if ( M < 3) { // January and February will count as 13th and 14th month of previous year
+		M +=12
+
+		Y -=1
+	 }
+	 // parameters required for Julian date
+	 var A = Math.floor(Y/100);
+	 var B = Math.floor(A/4);
+	 var C = 2-A+B;
+	 var E = Math.floor(365.25*(Y+4716))
+	 var F = Math.floor(30.6*(M+1))
+	 // result
+	 var JD = C+D+E+F-1524.5
+	 $("#result").val(JD)
+	 return JD;
+	 
+}
+//Calculate orbital period P in days
+function CalculateP(a){
+	return 2*Math.PI*Math.sqrt(Math.pow(a*au,3)/musolar)/day;
+}
+// Calculate mean anomaly from orbital parameters
+function CalculateM(a,time_epoch,tildeOmega,MeanLongitude){
+	var result,n,mzero;
+	n = 360/CalculateP(a);
+	Mzero = MeanLongitude - tildeOmega; //Calculate mean anomaly at start of epoch
+	result = Mzero + time_epoch*n;
+
+return result
+}
+//Solve Keplers equation M = E-ec*sin(E) for E-ec*Math
+function CalculateE(M,ec){
+	var E,iter,temp;
+	iter = 0;
+	// initial guess E = M
+	E = rad(M);
+	// values of f(E) at itteration pointer
+	f = E-ec*Math.sin(E)-rad(M);
+	while ((Math.abs(f)>delta)&&(iter<20)){
+	// next iteration point at x0-f(x)/f'(x)
+	E = E-f/(1.0-ec*Math.cos(E));
+	// value of f(E)
+	f = E-ec*Math.sin(E)-rad(M);
+	iter++;
+	}
+	return deg(E);
+}
+
+function CalculateTrueAnomaly(E,ec) {
+	return deg(Math.atan2(Math.sqrt(1-ec*ec)*Math.sin(rad(E)),Math.cos(rad(E))-ec));
+}
+
+//Calculate position of planet with id  1 = Mercury, 2 = venus etc at epoch_date 
+function CalculatePos(id,epoch_date){
+	var r,x,y,z;
+	var theta;
+	
+	var a = planet[id].a;			// Semi-major axis in AU
+	var e = planet[id].e;			// eccentricity
+	var i = planet[id].i;			// inclination
+	var MeanLongitude = planet[id].MeanLongitude;	// Mean longitude L = M + Omega + w
+	var Omega = planet[id].Omega;	// Longitude of accending node
+	var w = (planet[id].tildeOmega-Omega)%360;  // Argument of periapsis
+	
+	var M = CalculateM(a,epoch_date,planet[id].tildeOmega,MeanLongitude)%360;
+	var E = CalculateE(M,e)%360;
+	var v = CalculateTrueAnomaly(E,e);
+	//calculate the raidus from the ellipse equation
+	r = a*(1-e*e)/(1+e*Math.cos(rad(v)));
+	
+	// theta =  true anomaly + argument of periapsis = v +w
+	theta = v+w;
+	
+	x = r*(Math.cos(rad(Omega))*Math.cos(rad(theta))-Math.sin(rad(Omega))*Math.cos(rad(i))*Math.sin(rad(theta)));
+	y = r*(Math.sin(rad(Omega))*Math.cos(rad(theta))+Math.cos(rad(Omega))*Math.cos(rad(i))*Math.sin(rad(theta)));
+	z = r*Math.sin(rad(i))*Math.sin(rad(theta));
+	
+	var result = {x:x, y:y, z:z, r:r};
+	return result;
+}
+
+
+
+function Calculate(){
+	var date = CalculateJD();
+	var epoch_date = date-epoch;
+	
+	var table = "<tr><th style=\"width:20px\">#</th><th>Planet Name</th><th>x</th><th>y</th><th>z</th><th>r</th><th>Orbital period</br>days</th></tr>"; // table captions
+	
+	for (var i = 1; i<=8; i++)
+	{
+		pos = CalculatePos(i,epoch_date); // Calculate planets position at set time
+		//round up  the numbers
+
+		//print out results
+		table += "<tr><td>" + i + "</td><td>" + planet[i].name + "</td><td>" + pos.x.toFixed(precision) + "</td><td>" + pos.y.toFixed(precision) + "</td><td>" + pos.z.toFixed(precision) + "</td><td>" + pos.r.toFixed(precision) + "</td><td>" + CalculateP(planet[i].a).toFixed(precision) +"</td></tr>" ;
+	}
+	$("#table").html(table);
+	
+}
+
+
+</script>
+
+</body>
+</html>
